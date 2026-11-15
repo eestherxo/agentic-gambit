@@ -1,6 +1,6 @@
 import pygame
 import chess
-
+from search import find_best_move
 WIDTH = 640
 HEIGHT = 640
 DIMENSIONS = 8
@@ -105,70 +105,142 @@ def draw_move_dots(screen, possible_moves):
 
     screen.blit(overlay, (0, 0))
 
+AI_COLOR = chess.BLACK
+SEARCH_DEPTH = 3
+
+
+def make_ai_move(board):
+    if board.is_game_over():
+        return
+
+    best_move, evaluation = find_best_move(board, SEARCH_DEPTH)
+
+    if best_move is not None:
+        board.push(best_move)
+
+        print(f"AI played: {best_move}")
+        print(f"Evaluation: {evaluation}")
+
+def draw_status(screen, board, font):
+
+    if board.is_checkmate():
+        winner = "White" if board.turn == chess.BLACK else "Black"
+        message = f"Checkmate! {winner} wins"
+
+    elif board.is_game_over():
+        message = f"Game over: {board.result()}"
+
+    elif board.is_check():
+        message = f"{'White' if board.turn else 'Black'} is in check"
+
+    else:
+        message = f"{'White' if board.turn else 'Black'} to move"
+
+    text = font.render(message, True, (255, 255, 255))
+
+    screen.blit(text, (10, 10))
+
 
 def main():
 
     pygame.init()
+
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Chess")
+    pygame.display.set_caption("Chess - Material Agent")
 
     board = chess.Board()
     pieces = load_pieces()
+
+    font = pygame.font.SysFont("Arial", 22, bold=True)
 
     selected_sq = None
     possible_moves = []
 
     running = True
+
     while running:
+
         for event in pygame.event.get():
+
             if event.type == pygame.QUIT:
                 running = False
+
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+
+                # Only allow human moves when it is White's turn.
+                if board.turn == AI_COLOR:
+                    continue
+
+                if board.is_game_over():
+                    continue
+
                 target_sq = mouse_to_square(event.pos)
+
                 if target_sq is None:
                     continue
 
                 selected_piece = board.piece_at(target_sq)
 
-                # select the current players piece and get the possible moves from that piece
-                if selected_piece is not None and selected_piece.color == board.turn:
+                # Select a White piece.
+                if (
+                    selected_piece is not None
+                    and selected_piece.color == chess.WHITE
+                ):
+
                     selected_sq = target_sq
+
                     possible_moves = [
                         move
                         for move in board.legal_moves
                         if move.from_square == selected_sq
                     ]
-                    print(
-                        f"Turn: {"White" if selected_piece.color == True else "Black"}"
-                    )
-                    print(f"Possible moves: {possible_moves}")
+
+                    print("Possible moves:", possible_moves)
+
                     continue
 
-                # Move the selected piece to the square selected from possible moves
-                # Store as list, pawn promotion results in multiple 'moves'
+                # Find moves to the selected destination.
                 selected_moves = [
-                    move for move in possible_moves if move.to_square == target_sq
+                    move
+                    for move in possible_moves
+                    if move.to_square == target_sq
                 ]
-                print(f"Selected moves: {selected_moves}")
 
-                # Automatic queen promotion, try add options later
                 if selected_moves:
+
+                    # Automatically promote to a queen for now.
                     move = next(
                         (
                             move
                             for move in selected_moves
                             if move.promotion == chess.QUEEN
                         ),
-                        selected_moves[0],
+                        selected_moves[0]
                     )
+
+                    # Apply the human move.
                     board.push(move)
+
                     selected_sq = None
                     possible_moves = []
 
+                    print("Human played:", move)
+
+                    # Let the AI respond.
+                    if not board.is_game_over():
+                        make_ai_move(board)
+
+                else:
+                    # Clear selection if the destination is invalid.
+                    selected_sq = None
+                    possible_moves = []
+
+        # Draw everything.
         draw_board(screen)
         draw_piece_highlight(screen, selected_sq)
         draw_pieces(screen, board, pieces)
         draw_move_dots(screen, possible_moves)
+        draw_status(screen, board, font)
 
         pygame.display.flip()
 
