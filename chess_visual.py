@@ -1,5 +1,7 @@
 import pygame
 import chess
+from agents.positional_agent import get_positional_move
+from agents.material_agent import get_material_move
 
 WIDTH = 640
 HEIGHT = 640
@@ -26,6 +28,10 @@ piece_names = {
     "p": "bP",
 }
 
+AGENTS = {
+    "Positional": get_positional_move,
+    "Material": get_material_move,
+}
 
 def load_pieces():
 
@@ -106,15 +112,108 @@ def draw_move_dots(screen, possible_moves):
     screen.blit(overlay, (0, 0))
 
 
-def main():
+def choose_setup(screen):
+    font = pygame.font.SysFont(None, 34)
+    buttons = [
+        (pygame.Rect(170, 190, 300, 60), "Play Agent 1"), # positional agent 
+        (pygame.Rect(170, 280, 300, 60), "Play Agent 2"), # material agent 
+        (pygame.Rect(170, 370, 300, 60), "Agent 1 vs Agent 2"),
+    ]
 
-    pygame.init()
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Chess")
+    while True:
+        screen.fill((235, 235, 225))
+        title = font.render("Choose a game mode", True, (30, 30, 30))
+        screen.blit(title, title.get_rect(center=(WIDTH // 2, 110)))
 
+        for rect, label in buttons:
+            pygame.draw.rect(screen, (118, 150, 86), rect, border_radius=8)
+            text = font.render(label, True, (255, 255, 255))
+            screen.blit(text, text.get_rect(center=rect.center))
+
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return None
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                for index, (rect, _) in enumerate(buttons):
+                    if rect.collidepoint(event.pos):
+                        if index == 0:
+                            return ("human_vs_agent", get_positional_move, None, None)
+                        if index == 1:
+                            return ("human_vs_agent", get_material_move, None, None)
+                        return (
+                            "agent_vs_agent",
+                            None,
+                            get_positional_move,
+                            get_material_move,
+                            
+                        )
+
+def agent_for_turn(mode, board, human_color, chosen_agent,
+                   white_agent, black_agent):
+    if mode == "human_vs_agent":
+        return chosen_agent if board.turn != human_color else None
+
+    if mode == "agent_vs_agent":
+        return white_agent if board.turn == chess.WHITE else black_agent
+
+    return None
+
+def show_game_over(screen, board, pieces):
+    outcome = board.outcome(claim_draw=True)
+
+    if outcome is None or outcome.winner is None:
+        message = "Draw"
+    else:
+        winner = "White" if outcome.winner == chess.WHITE else "Black"
+        message = f"{winner} Won"
+
+    font = pygame.font.SysFont(None, 48)
+    button_font = pygame.font.SysFont(None, 32)
+    menu_button = pygame.Rect(170, 365, 300, 60)
+
+    clock = pygame.time.Clock()
+
+    while True:
+        # Keep the final board visible behind the dialog.
+        draw_board(screen)
+        draw_pieces(screen, board, pieces)
+
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 150))
+        screen.blit(overlay, (0, 0))
+
+        title = font.render(message, True, (255, 255, 255))
+        screen.blit(title, title.get_rect(center=(WIDTH // 2, 275)))
+
+        pygame.draw.rect(screen, (118, 150, 86), menu_button, border_radius=8)
+        label = button_font.render("Restart", True, (255, 255, 255))
+        screen.blit(label, label.get_rect(center=menu_button.center))
+
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+            if (
+                event.type == pygame.MOUSEBUTTONDOWN
+                and event.button == 1
+                and menu_button.collidepoint(event.pos)
+            ):
+                return True
+
+        clock.tick(30)
+
+
+def play_game(screen, setup, pieces):
     board = chess.Board()
-    pieces = load_pieces()
+    mode, chosen_agent, white_agent, black_agent = setup
+    human_color = chess.WHITE
 
+    clock = pygame.time.Clock()
+    ai_delay_ms = 500
+    next_ai_move_at = pygame.time.get_ticks() + ai_delay_ms
     selected_sq = None
     possible_moves = []
 
@@ -122,57 +221,90 @@ def main():
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                running = False
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                target_sq = mouse_to_square(event.pos)
-                if target_sq is None:
-                    continue
+                return False
 
+            if (
+                event.type == pygame.MOUSEBUTTONDOWN
+                and event.button == 1
+                and mode == "human_vs_agent"
+                and board.turn == human_color
+            ):
+                target_sq = mouse_to_square(event.pos)
                 selected_piece = board.piece_at(target_sq)
 
-                # select the current players piece and get the possible moves from that piece
-                if selected_piece is not None and selected_piece.color == board.turn:
+                if selected_piece is not None and selected_piece.color == human_color:
                     selected_sq = target_sq
                     possible_moves = [
-                        move
-                        for move in board.legal_moves
+                        move for move in board.legal_moves
                         if move.from_square == selected_sq
                     ]
-                    print(
-                        f"Turn: {"White" if selected_piece.color == True else "Black"}"
-                    )
-                    print(f"Possible moves: {possible_moves}")
-                    continue
+                else:
+                    selected_moves = [
+                        move for move in possible_moves
+                        if move.to_square == target_sq
+                    ]
 
-                # Move the selected piece to the square selected from possible moves
-                # Store as list, pawn promotion results in multiple 'moves'
-                selected_moves = [
-                    move for move in possible_moves if move.to_square == target_sq
-                ]
-                print(f"Selected moves: {selected_moves}")
+                    if selected_moves:
+                        move = next(
+                            (
+                                move
+                                for move in selected_moves
+                                if move.promotion == chess.QUEEN
+                            ),
+                            selected_moves[0],
+                        )
+                        board.push(move)
+                        selected_sq = None
+                        possible_moves = []
+                        next_ai_move_at = pygame.time.get_ticks() + ai_delay_ms
 
-                # Automatic queen promotion, try add options later
-                if selected_moves:
-                    move = next(
-                        (
-                            move
-                            for move in selected_moves
-                            if move.promotion == chess.QUEEN
-                        ),
-                        selected_moves[0],
-                    )
-                    board.push(move)
-                    selected_sq = None
-                    possible_moves = []
+        agent = agent_for_turn(
+            mode, board, human_color, chosen_agent, white_agent, black_agent
+        )
+        now = pygame.time.get_ticks()
+
+        if (
+            agent is not None
+            and not board.is_game_over()
+            and now >= next_ai_move_at
+        ):
+            move = agent(board, depth=3)
+            if move is not None:
+                board.push(move)
+
+            selected_sq = None
+            possible_moves = []
+            next_ai_move_at = pygame.time.get_ticks() + ai_delay_ms
 
         draw_board(screen)
         draw_piece_highlight(screen, selected_sq)
         draw_pieces(screen, board, pieces)
         draw_move_dots(screen, possible_moves)
 
-        pygame.display.flip()
+        if board.is_game_over(claim_draw=True):
+            return show_game_over(screen, board, pieces)
 
-    pygame.quit()
+        pygame.display.flip()
+        clock.tick(60)
+
+    return False
+
+
+
+def main():
+
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Agentic Gambit")
+    pieces = load_pieces()
+
+    while True:
+        setup = choose_setup(screen)
+        if setup is None:
+            break
+
+        if not play_game(screen, setup, pieces):
+            break
 
 
 if __name__ == "__main__":
