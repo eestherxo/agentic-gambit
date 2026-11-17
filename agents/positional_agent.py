@@ -97,7 +97,7 @@ def pawn_structure_score(board, color) -> float:
 
     for square in pawns:
         col_index = chess.square_file(square)
-        if (col_index - 1 not in pawn_cols) and (col_index + 1 not in pawns):
+        if (col_index - 1 not in pawn_cols) and (col_index + 1 not in pawn_cols):
             pawn_score -= ISOLATED_PAWN_PENALTY
 
         # Passed Pawns 
