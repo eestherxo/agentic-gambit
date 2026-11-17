@@ -1,85 +1,17 @@
 import chess
 
-from material_agent import evaluate_board
+MATE_SCORE = 1_000_000
 
 PIECE_VALUES = {
-    chess.PAWN: 100,
-    chess.KNIGHT: 320,
-    chess.BISHOP: 330,
-    chess.ROOK: 500,
-    chess.QUEEN: 900,
-    chess.KING: 0 # King is invaluable, but we can assign it a value of 0 for evaluation purposes
+    chess.PAWN: 1,
+    chess.KNIGHT: 3,
+    chess.BISHOP: 3,
+    chess.ROOK: 5,
+    chess.QUEEN: 9,
+    chess.KING: 0
 }
 
-def is_game_over(board):
-    return board.is_game_over()
-
-def get_legal_moves(board):
-    return list(board.legal_moves)
-
-def make_move(board, move):
-    new_board = board.copy()
-    new_board.push(move)
-    return new_board
-
-def chess_minimax(board, depth, alpha=float('-inf'), beta=float('inf')):
-    if depth == 0 or is_game_over(board):
-        return evaluate_board(board)
-
-    if board.turn == chess.WHITE:
-        max_eval = float('-inf')
-        for move in order_moves(board, get_legal_moves(board)):
-            new_board = make_move(board, move)
-            eval = chess_minimax(new_board, depth - 1, alpha, beta)
-            max_eval = max(max_eval, eval)
-            alpha = max(alpha, eval)
-            if beta <= alpha:
-                break
-        return max_eval
-    else:
-        min_eval = float('inf')
-        for move in order_moves(board, get_legal_moves(board)):
-            new_board = make_move(board, move)
-            eval = chess_minimax(new_board, depth - 1, alpha, beta)
-            min_eval = min(min_eval, eval)
-            beta = min(beta, eval)
-            if beta <= alpha:
-                break
-        return min_eval
-
-def find_best_move(board, depth):
-
-    best_move = None
-    if board.turn == chess.WHITE:
-        best_eval = float('-inf')
-
-        for move in order_moves(board, get_legal_moves(board)):
-
-            new_board = make_move(board, move)
-
-            evaluation = chess_minimax(new_board, depth - 1, float('-inf'), float('inf'))
-
-            if evaluation > best_eval:
-                best_eval = evaluation
-                best_move = move
-    else:
-        best_eval = float('inf')
-
-        for move in order_moves(board, get_legal_moves(board)):
-
-            new_board = make_move(board, move)
-
-            evaluation = chess_minimax(new_board, depth - 1, float('-inf'), float('inf'))
-
-            if evaluation < best_eval:
-                best_eval = evaluation
-                best_move = move
-
-    return best_move, best_eval
-
-
 def order_moves(board, moves):
-
     def move_score(move):
         score = 0
 
@@ -97,7 +29,8 @@ def order_moves(board, moves):
         if move.promotion:
             score += PIECE_VALUES[move.promotion]
 
-        # Prioritize checks
+
+        # Prioritize checks 
         board.push(move)
         if board.is_check():
             score += 5
@@ -108,17 +41,70 @@ def order_moves(board, moves):
     return sorted(moves, key=move_score, reverse=True)
 
 
-def main():
 
-    board = chess.Board()
+def chess_minimax(board, depth, utility_function, player,  alpha=float("-inf"), beta=float("inf")):
 
-    print("Current board:")
-    print(board)
+    if board.is_checkmate():
+        return -MATE_SCORE if board.turn == player else MATE_SCORE
 
-    best_move= find_best_move(board, 4)
+    if board.is_game_over(claim_draw=True):
+        return 0
 
-    print(f"Best move: {best_move}")
+    if depth == 0: 
+        return utility_function(board, player)
+
+    if board.turn == player:
+        max_eval = float("-inf")
+
+        moves = order_moves(board, list(board.legal_moves))
+        for move in moves:
+            board.push(move)
+            eval = chess_minimax(board, depth - 1, utility_function, player, alpha, beta)
+            board.pop()
+
+            max_eval = max(max_eval, eval)
+            alpha = max(alpha, max_eval)
+            if alpha >= beta:
+                break
+
+        return max_eval
+    
+    else:
+        min_eval = float("inf")
+
+        moves = order_moves(board, list(board.legal_moves))
+        for move in moves:
+            board.push(move)
+            eval = chess_minimax(board, depth - 1, utility_function, player, alpha, beta)
+            board.pop()
+
+            min_eval = min(min_eval, eval)
+            beta = min(beta, min_eval)
+            if alpha >= beta:
+                break
+
+        return min_eval
 
 
-if __name__ == "__main__":
-    main()
+def find_best_move(board, depth, utility_function):
+
+    player = board.turn 
+    best_move = None 
+    max_eval = float("-inf")
+    alpha = float("-inf")
+    beta = float("inf")
+
+    moves = order_moves(board, list(board.legal_moves))
+    for move in moves:
+        board.push(move)
+        eval = chess_minimax(board, depth - 1, utility_function, player, alpha, beta)
+        board.pop()
+
+        if eval > max_eval:
+            max_eval = eval
+            best_move = move
+
+        alpha = max(alpha, max_eval)
+
+    return best_move  
+
